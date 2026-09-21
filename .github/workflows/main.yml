@@ -1,0 +1,274 @@
+mkdir -p app/src/main/java/com/example/edgetorch
+mkdir -p app/src/main/res/values
+mkdir -p .github/workflows
+
+cat > settings.gradle.kts <<'EOF'
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "AMOLED Edge Torch"
+include(":app")
+EOF
+
+cat > build.gradle.kts <<'EOF'
+plugins {
+    id("com.android.application") version "8.7.3" apply false
+    id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+}
+EOF
+
+cat > gradle.properties <<'EOF'
+android.useAndroidX=true
+kotlin.code.style=official
+EOF
+
+cat > app/build.gradle.kts <<'EOF'
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    namespace = "com.example.edgetorch"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "com.example.edgetorch"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = "1.0"
+    }
+}
+EOF
+
+cat > app/src/main/AndroidManifest.xml <<'EOF'
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+
+    <application
+        android:theme="@style/AppTheme"
+        android:label="AMOLED Edge Torch">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+
+        </activity>
+
+    </application>
+</manifest>
+EOF
+
+cat > app/src/main/res/values/styles.xml <<'EOF'
+<resources>
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#00FFFF</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:statusBarColor">#000000</item>
+    </style>
+</resources>
+EOF
+
+cat > app/src/main/java/com/example/edgetorch/MainActivity.kt <<'EOF'
+package com.example.edgetorch
+
+import android.app.*
+import android.os.*
+import android.content.*
+import android.graphics.*
+import android.graphics.drawable.ColorDrawable
+import android.net.Uri
+import android.provider.Settings
+import android.view.*
+import android.widget.*
+
+class MainActivity : Activity() {
+
+    private var overlay: EdgeOverlay? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 60, 40, 40)
+            setBackgroundColor(Color.BLACK)
+        }
+
+        val title = TextView(this).apply {
+            text = "AMOLED Edge Torch"
+            textSize = 25f
+            setTextColor(Color.WHITE)
+        }
+
+        val start = Button(this).apply {
+            text = "START EDGE LIGHT"
+            setOnClickListener { startEdge() }
+        }
+
+        val stop = Button(this).apply {
+            text = "STOP"
+            setOnClickListener { stopEdge() }
+        }
+
+        layout.addView(title)
+        layout.addView(start)
+        layout.addView(stop)
+
+        setContentView(layout)
+    }
+
+    private fun startEdge() {
+        if (!Settings.canDrawOverlays(this)) {
+            startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+            )
+            return
+        }
+
+        if (overlay == null) {
+            overlay = EdgeOverlay(this)
+            overlay?.show()
+        }
+    }
+
+    private fun stopEdge() {
+        overlay?.close()
+        overlay = null
+    }
+
+    override fun onDestroy() {
+        stopEdge()
+        super.onDestroy()
+    }
+}
+
+class EdgeOverlay(private val context: Context) {
+
+    private val windowManager =
+        context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+    private val view = EdgeView(context)
+
+    fun show() {
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        )
+
+        windowManager.addView(view, params)
+    }
+
+    fun close() {
+        try {
+            windowManager.removeView(view)
+        } catch (_: Exception) {
+        }
+    }
+}
+
+class EdgeView(context: Context) : View(context) {
+
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+
+        val width = width.toFloat()
+        val height = height.toFloat()
+        val edge = 35f
+
+        paint.style = Paint.Style.FILL
+        paint.shader = LinearGradient(
+            0f, 0f, width, 0f,
+            Color.TRANSPARENT,
+            Color.CYAN,
+            Shader.TileMode.CLAMP
+        )
+
+        canvas.drawRect(0f, 0f, edge, height, paint)
+
+        paint.shader = LinearGradient(
+            width, 0f, width - edge, 0f,
+            Color.TRANSPARENT,
+            Color.CYAN,
+            Shader.TileMode.CLAMP
+        )
+
+        canvas.drawRect(width - edge, 0f, width, height, paint)
+
+        paint.shader = null
+        paint.color = Color.CYAN
+
+        canvas.drawRect(0f, 0f, width, edge, paint)
+        canvas.drawRect(0f, height - edge, width, height, paint)
+    }
+}
+EOF
+
+cat > .github/workflows/build.yml <<'EOF'
+name: Build AMOLED Edge Torch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+
+      - name: Build APK
+        run: gradle assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AMOLED-Edge-Torch
+          path: app/build/outputs/apk/debug/app-debug.apk
+EOF
+
+git add .
+git commit -m "Create AMOLED Edge Torch app"
+git push
